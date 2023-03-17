@@ -8,7 +8,6 @@ from tqdm import tqdm
 from dataset_prepration import MITIndoorDataset
 from models import CNN
 
-
 if __name__ == "__main__":
     # Define the transformations for data augmentation
     transformations = transforms.Compose([
@@ -29,34 +28,36 @@ if __name__ == "__main__":
     val_dataset = MITIndoorDataset("data/val.txt", transformations_test)
     test_dataset = MITIndoorDataset("data/test.txt", transformations_test)
 
-    # Define hyper-parameters
+    # HYPER-PARAMETERS
     batch_size = 1
     lr = 0.001
-    num_epochs = 20
+    num_epochs = 30
     patience = 5
-    best_valid_acc = 0
 
-    # Define data loaders
+    best_valid_acc = 0
+    epoch_since_improvement = 0
+
+    # CREATE DATA LOADER FOR TRAIN, VALIDATION AND TEST
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True,
                               pin_memory=True)
+    print(len(train_dataset))
     valid_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
 
-    # Define model, optimizer, and loss criterion
+    # DEFINE MODEL, OPTIMIZER AND LOSS FUNCTION
     model = CNN(num_classes=67)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
-    # Define learning rate scheduler
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=1, verbose=True)
+    # DEFINE LEARNING RATE SCHEDULER
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=2, verbose=True)
 
-    # Move model to GPU if available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
 
-    # Training loop
+    # TRAINING LOOP
     for epoch in range(num_epochs):
-        # Train the model
+        # TRAIN THE MODEL
         epoch_iterator_train = tqdm(train_loader)
         train_loss = 0
         train_acc = 0
@@ -77,8 +78,7 @@ if __name__ == "__main__":
         train_loss /= len(train_dataset)
         train_acc /= len(train_dataset)
 
-        # Validate the model
-
+        # VALIDATION THE MODEL
         valid_loss = 0
         valid_acc = 0
         valid_predictions = []
@@ -110,13 +110,19 @@ if __name__ == "__main__":
         # Save best model
         if valid_balanced_acc > best_valid_acc:
             best_valid_acc = valid_balanced_acc
-            torch.save(model.state_dict(), 'best_model.pkl')
-            print('Best model saved.')
+            epoch_since_improvement = 0
+            torch.save(model.state_dict(), 'model/best_model.pkl')
+            print(f'VALIDATION ACCURACY IMPROVED TO {valid_balanced_acc:.4f}.')
+            print('BEST MODEL SAVED')
+        else:
+            epoch_since_improvement += 1
+            print(
+                f'VALIDATION ACCURACY DID NOT IMPROVE. EPOCHS SINCE LAST LAST IMPROVEMENT: {epoch_since_improvement}.')
 
         # Update learning rate scheduler
         scheduler.step(valid_balanced_acc)
 
-        # Check for early stopping
-        # if epoch > patience and valid_balanced_acc <= max([valid_balanced_accs[-p] for p in range(1, patience+1)]):
-        # print(f'Validation accuracy did not improve for {patience} epochs. Training stopped.')
-        # break
+        # Check if we should stop training early
+        if epoch_since_improvement > patience:
+            print(f'VALIDATION ACCURACY DID NOT IMPROVE FOR {patience} EPOCHS. TRAINING STOPPED.')
+            break
