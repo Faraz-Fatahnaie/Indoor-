@@ -1,35 +1,79 @@
+import os
 import pickle
 from tqdm import tqdm
 import torch
+import numpy as np
+import pandas as pd
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset, DataLoader
-from dataset_prepration import MITIndoorDataset
+from sklearn.metrics import balanced_accuracy_score
+from dataset import MITIndoorDataset
+from visualization import conf_matrix, roc_auc_score
+from argparse import Namespace, ArgumentParser
+from pathlib import Path
 
-transformations_test = transforms.Compose([
+
+def evaluate(args: Namespace):
+    # LOAD MODEL
+    model_path: Path = args.model
+    root_path = Path(model_path).resolve().parent
+
+    submission_path = str(model_path).split("\\")[-1].split(".")[-2].split("-")
+    del submission_path[0]
+    submission_path = str(submission_path[0]) + '-' + str(submission_path[1])
+
+    model = torch.load(model_path)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+
+    transformations_test = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
 
-test_dataset = MITIndoorDataset("data/test.txt", transformations_test)
-test_loader = DataLoader(test_dataset, batch_size=1, num_workers=4, pin_memory=True)
+    test_dataset = MITIndoorDataset("data/val.txt", transformations_test)
 
-model = torch.load('trained_model/best_model.pt')
-model.to('cuda:0')
+    with open('data/class_dict.pkl', 'rb') as f:
+        class_dict = pickle.load(f)
 
-labels = []
-preds = []
-confs = []
+    labels = []
+    preds = []
+    acc = 0
+    with torch.no_grad():
+        for idx in tqdm(range(len(test_dataset)), total=len(test_dataset)):
+            model.eval()
+            image, target = test_dataset[idx]
+            image = image.to('cuda:0')
+            image = torch.unsqueeze(image, dim=0)
+            pred = model(image)
+            preds.append(pred.argmax(dim=1).detach().cpu().view(-1).numpy())
+            labels.append(target)
 
-with torch.no_grad():
-    for idx in tqdm(range(len(test_dataset)), total=len(test_dataset)):
-        model.eval()
-        image, target = test_dataset[idx]
-        image = image.to('cuda:0')
-        image = torch.unsqueeze(image, dim=0)
-        pred = model(image)
-        confs.append(pred.detach().cpu().view(-1).numpy())
+            acc += (preds[-1] == target).sum().item()
 
-        pred = 1 if pred > args.thresh else 0
-        preds.append(pred)
-        labels.append(target.detach().cpu().numpy())
+    labels = np.array(labels, dtype='int32')
+    preds = np.array(preds, dtype='int32')
+    preds = preds[:, 0]
+
+    print('PREDs', np.shape(preds), preds.dtype)
+    print('LABELS', np.shape(labels), labels.dtype)
+
+    # Visualization
+    # conf_matrix(labels, preds, class_dict, Path(root_path))
+
+    print('===================================')
+
+    balanced_acc = balanced_accuracy_score(labels, preds)
+    print('AUC: ', round(balanced_acc, 4))
+
+    submission = pd.DataFrame({'prediction': preds, 'label': labels})
+    os.mkdir(root_path.joinpath('submission'))
+    submission.to_csv(Path(root_path).joinpath(f'submission/SUBMISSION_{submission_path}_'
+                                               f'BALANCED-ACC-{round(balanced_acc, 4)}.csv'), index=False)
+
+
+if __name__ == '__main__':
+    parser = ArgumentParser(description='Evaluate Trained Model on Test Set')
+    parser.add_argument('--model', help="model weights", type=Path)
+
+    evaluate(args=parser.parse_args())
