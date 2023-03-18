@@ -31,7 +31,7 @@ for class_name in class_dict.keys():
     random.shuffle(class_images)
     n_train = int(len(class_images) * 0.6)
     n_val = int(len(class_images) * 0.2)
-    # train_images.extend(class_images[0])
+
     train_images.extend(class_images[0: n_train])
     val_images.extend(class_images[n_train: n_train + n_val])
     test_images.extend(class_images[n_train + n_val:])
@@ -61,7 +61,6 @@ class MITIndoorDataset(Dataset):
         self.transform = transform
         with open(self.data_file, "r") as f:
             self.data = f.readlines()
-            print(len(self.data))
 
     def __len__(self):
         return len(self.data)
@@ -69,7 +68,13 @@ class MITIndoorDataset(Dataset):
     def __getitem__(self, idx):
         line = self.data[idx].strip()
         image_path, label = line.split(" ")
+
         image = Image.open(image_path).convert('RGB')
+
         if self.transform:
             image = self.transform(image)
         return image, int(label)
+
+
+#if __name__ == "__main__":
+#    MITIndoorDataset("data/train.txt").__getitem__(0)

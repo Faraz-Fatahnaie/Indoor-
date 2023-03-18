@@ -1,19 +1,19 @@
 import torch
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import balanced_accuracy_score
 from tqdm import tqdm
 from dataset_prepration import MITIndoorDataset
-from models import CNN
+from models import CNN, SimpleCNN
 
 if __name__ == "__main__":
     # Define the transformations for data augmentation
     transformations = transforms.Compose([
         transforms.Resize((224, 224)),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(10),
+        #transforms.RandomHorizontalFlip(),
+        #transforms.RandomRotation(10),
         transforms.ToTensor(),
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
@@ -26,26 +26,24 @@ if __name__ == "__main__":
 
     train_dataset = MITIndoorDataset("data/train.txt", transformations)
     val_dataset = MITIndoorDataset("data/val.txt", transformations_test)
-    test_dataset = MITIndoorDataset("data/test.txt", transformations_test)
 
     # HYPER-PARAMETERS
-    batch_size = 1
+    batch_size = 32
     lr = 0.001
-    num_epochs = 30
-    patience = 5
+    num_epochs = 50
+    patience = 10
 
     best_valid_acc = 0
     epoch_since_improvement = 0
 
     # CREATE DATA LOADER FOR TRAIN, VALIDATION AND TEST
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True,
-                              pin_memory=True)
-    print(len(train_dataset))
-    valid_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True)
+    print(len(train_loader))
+    valid_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4)
+    # test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
 
     # DEFINE MODEL, OPTIMIZER AND LOSS FUNCTION
-    model = CNN(num_classes=67)
+    model = SimpleCNN(num_classes=67)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
@@ -63,11 +61,10 @@ if __name__ == "__main__":
         train_acc = 0
         for step, batch in enumerate(epoch_iterator_train):
             model.train()
-            images, labels = batch[0].to(device), batch[1].type(torch.LongTensor).to(device)
+            images, labels = batch[0].to(device).float(), batch[1].to(device).long()
             optimizer.zero_grad()
             outputs = model(images)
-            loss = criterion(outputs.squeeze(1), labels)
-
+            loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -87,9 +84,9 @@ if __name__ == "__main__":
         with torch.no_grad():
             for step, batch in enumerate(epoch_iterator_val):
                 model.eval()
-                images, labels = batch[0].to(device), batch[1].type(torch.LongTensor).to(device)
+                images, labels = batch[0].to(device).float(), batch[1].to(device).long()
                 outputs = model(images)
-                loss = criterion(outputs.squeeze(1), labels)
+                loss = criterion(outputs, labels)
                 valid_loss += loss.item()
                 epoch_iterator_val.set_postfix(
                     batch_loss=(loss.item()), loss=(valid_loss / (step + 1))
@@ -111,7 +108,7 @@ if __name__ == "__main__":
         if valid_balanced_acc > best_valid_acc:
             best_valid_acc = valid_balanced_acc
             epoch_since_improvement = 0
-            torch.save(model.state_dict(), 'model/best_model.pkl')
+            torch.save(model.state_dict(), 'model/best_model-2.pt')
             print(f'VALIDATION ACCURACY IMPROVED TO {valid_balanced_acc:.4f}.')
             print('BEST MODEL SAVED')
         else:
