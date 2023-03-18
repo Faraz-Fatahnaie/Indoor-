@@ -1,0 +1,23 @@
+{
+  "cuda": true,
+  "dataset": {
+    "name": "MIT",
+    "n_channel": 3,
+    "image_size": 256,
+    "augmentation": 0,
+    "n_worker": 4
+  },
+  "model": {
+    "name": "resnet-18",
+    "epoch": 100,
+    "batch_size": 16,
+    "optim": "Adam",
+    "loss": "CrossEntropyLoss",
+    "lr": 0.01,
+    "min_lr": 0.000001,
+    "patience": 5,
+    "early_stop": 5,
+    "factor": 0.1,
+    "scheduler": "ReduceLROnPlateau"
+  }
+}
