@@ -1,4 +1,4 @@
 data
-model
+trained_model
 .idea
 *.pkl

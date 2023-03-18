@@ -5,6 +5,7 @@ import torch.nn as nn
 from PIL import Image
 from pathlib import Path
 import numpy as np
+import cv2 as cv
 
 data_dir = ".\data\Images"
 class_dict = {}
@@ -25,16 +26,20 @@ for class_name in class_dict.keys():
     class_images = []
     for image_file in os.listdir(class_path):
         if image_file.endswith(".jpg"):
+            if " " in str(image_file):
+                old_name = image_file
+                image_file = image_file.replace(" ", "__")
+                os.rename(str(os.path.join(class_path, old_name)), str(os.path.join(class_path, image_file)))
             image_path = os.path.join(class_path, image_file)
             class_images.append((str(base_dir.joinpath(image_path)), class_dict[class_name]))
     # Shuffle and split the images into train, validation, and test sets
     random.shuffle(class_images)
-    n_train = int(len(class_images) * 0.6)
+    n_train = int(len(class_images) * 0.8)
     n_val = int(len(class_images) * 0.2)
 
     train_images.extend(class_images[0: n_train])
     val_images.extend(class_images[n_train: n_train + n_val])
-    test_images.extend(class_images[n_train + n_val:])
+    #test_images.extend(class_images[n_train + n_val:])
 
 
 # Write the data to text files
@@ -44,14 +49,14 @@ with open("data/train.txt", "w") as f:
         f.write(f"{image_path} {label}\n")
 
 with open("data/val.txt", "w") as f:
-    for c in train_images:
+    for c in val_images:
         image_path, label = c
         f.write(f"{image_path} {label}\n")
 
-with open("data/test.txt", "w") as f:
-    for c in train_images:
-        image_path, label = c
-        f.write(f"{image_path} {label}\n")
+#with open("data/test.txt", "w") as f:
+    #for c in test_images:
+        #image_path, label = c
+        #f.write(f"{image_path} {label}\n")
 
 
 # Define the custom dataset class
@@ -67,14 +72,18 @@ class MITIndoorDataset(Dataset):
 
     def __getitem__(self, idx):
         line = self.data[idx].strip()
-        image_path, label = line.split(" ")
+        if line is not None:
+            try:
+                img_path, label = line.split(" ")
+                #img = cv.imread(Path(img_path))
+                #img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
+                img = Image.open(img_path).convert('RGB')
+                if img is not None:
+                    if self.transform:
+                        img = self.transform(img)
+                    return img, int(label)
+            except:
+                print(line)
 
-        image = Image.open(image_path).convert('RGB')
-
-        if self.transform:
-            image = self.transform(image)
-        return image, int(label)
-
-
-#if __name__ == "__main__":
+# if __name__ == "__main__":
 #    MITIndoorDataset("data/train.txt").__getitem__(0)

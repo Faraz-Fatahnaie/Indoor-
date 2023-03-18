@@ -6,14 +6,20 @@ import torch.optim as optim
 from sklearn.metrics import balanced_accuracy_score
 from tqdm import tqdm
 from dataset_prepration import MITIndoorDataset
-from models import CNN, SimpleCNN
+from models.CNN import CNN, SimpleCNN
+from models.ResNet import ResNet18, ResNet50
+import os
+from argparse import Namespace, ArgumentParser
+from pathlib import Path
+import json
+
 
 if __name__ == "__main__":
     # Define the transformations for data augmentation
     transformations = transforms.Compose([
         transforms.Resize((224, 224)),
-        #transforms.RandomHorizontalFlip(),
-        #transforms.RandomRotation(10),
+        # transforms.RandomHorizontalFlip(),
+        # transforms.RandomRotation(10),
         transforms.ToTensor(),
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
@@ -28,27 +34,29 @@ if __name__ == "__main__":
     val_dataset = MITIndoorDataset("data/val.txt", transformations_test)
 
     # HYPER-PARAMETERS
-    batch_size = 32
-    lr = 0.001
-    num_epochs = 50
-    patience = 10
+    batch_size = 16
+    lr = 0.01
+    num_epochs = 100
+    patience = 20
 
     best_valid_acc = 0
     epoch_since_improvement = 0
 
     # CREATE DATA LOADER FOR TRAIN, VALIDATION AND TEST
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True,
+                              pin_memory=True)
     print(len(train_loader))
-    valid_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=4)
+    valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
+    print(len(valid_loader))
     # test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
 
     # DEFINE MODEL, OPTIMIZER AND LOSS FUNCTION
-    model = SimpleCNN(num_classes=67)
+    model = ResNet18(num_classes=67)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.CrossEntropyLoss()
 
     # DEFINE LEARNING RATE SCHEDULER
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', patience=2, verbose=True)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, min_lr=1e-5, verbose=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -104,11 +112,11 @@ if __name__ == "__main__":
         print(f'Valid Loss: {valid_loss:.4f}, Valid Accuracy: {valid_acc:.4f}, Valid Balanced Accuracy:'
               f' {valid_balanced_acc:.4f}')
 
-        # Save best model
+        # Save best trained_model
         if valid_balanced_acc > best_valid_acc:
             best_valid_acc = valid_balanced_acc
             epoch_since_improvement = 0
-            torch.save(model.state_dict(), 'model/best_model-2.pt')
+            torch.save(model.state_dict(), 'trained_model/best_model-3.pt')
             print(f'VALIDATION ACCURACY IMPROVED TO {valid_balanced_acc:.4f}.')
             print('BEST MODEL SAVED')
         else:
