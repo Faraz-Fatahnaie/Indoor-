@@ -1,21 +1,66 @@
 import torch
+from torch.optim import lr_scheduler
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import balanced_accuracy_score
 from tqdm import tqdm
-from dataset_prepration import MITIndoorDataset
+from dataset import MITIndoorDataset
 from models.CNN import CNN, SimpleCNN
 from models.ResNet import ResNet18, ResNet50
 import os
 from argparse import Namespace, ArgumentParser
 from pathlib import Path
 import json
+from config.setting import setting
 
 
-if __name__ == "__main__":
-    # Define the transformations for data augmentation
+def setup(args: Namespace):
+    i = 1
+    flag = True
+    SAVE_PATH_ = ''
+    TRAINED_MODEL_PATH_ = ''
+    CHECKPOINT_PATH_ = ''
+    config = {}
+    BASE_DIR = Path(__file__).resolve().parent
+    while flag:
+        if args.model_dir is None:
+            CONFIG_NAME = 'configs'  # config file name in config dir
+            CONFIGS_DIR = BASE_DIR.joinpath('config')
+            CONFIGS = open(f'{CONFIGS_DIR}/{CONFIG_NAME}.json')
+            CONFIGS = json.load(CONFIGS)
+            config = setting(CONFIGS)
+
+            TEMP_PATH = BASE_DIR.joinpath(
+                f"session/{config['MODEL_NAME']}-{i}")
+            if os.path.isdir(TEMP_PATH):
+                i += 1
+            else:
+                flag = False
+
+                os.mkdir(BASE_DIR.joinpath(f"session/{config['MODEL_NAME']}-{i}"))
+                os.mkdir(BASE_DIR.joinpath(f"session/{config['MODEL_NAME']}-{i}/trained_models"))
+                SAVE_PATH_ = BASE_DIR.joinpath(f"session/{config['MODEL_NAME']}-{i}")
+                TRAINED_MODEL_PATH_ = BASE_DIR.joinpath(f"session/{config['MODEL_NAME']}-{i}/trained_models")
+
+                os.mkdir(BASE_DIR.joinpath(f'{SAVE_PATH_}/model_checkpoint'))
+                CHECKPOINT_PATH_ = SAVE_PATH_.joinpath(f"model_checkpoint/{config['MODEL_NAME']}-{i}.pt")
+
+                with open(f'{SAVE_PATH_}/MODEL_CONFIG.json', 'w') as f:
+                    json.dump(CONFIGS, f)
+        else:
+            flag = False
+            SAVE_PATH_ = args.model_dir
+            model_dir_name = str(SAVE_PATH_).split(os.sep)[-1]  # .pt file is saving with name of folder name in session
+            CHECKPOINT_PATH_ = SAVE_PATH_.joinpath(f'model_checkpoint/{model_dir_name}.pt')
+
+            CONFIGS = open(SAVE_PATH_.joinpath('MODEL_CONFIG.json'))
+            CONFIGS = json.load(CONFIGS)
+            print('JSON CONFIG FILE LOADED')
+            config = setting(CONFIGS)
+
     transformations = transforms.Compose([
         transforms.Resize((224, 224)),
         # transforms.RandomHorizontalFlip(),
@@ -33,36 +78,90 @@ if __name__ == "__main__":
     train_dataset = MITIndoorDataset("data/train.txt", transformations)
     val_dataset = MITIndoorDataset("data/val.txt", transformations_test)
 
-    # HYPER-PARAMETERS
-    batch_size = 16
-    lr = 0.01
-    num_epochs = 100
-    patience = 20
+    # MODEL CONFIGURATION
+    model_catalog = {
+        # 'efficientNet': efficientnet_b0(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
+        # 'efficientNet_C': EfficientNetB0C(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
+        # 'Vgg16FCorrelation': Vgg16FCorrelation(num_classes=1),
+        'resnet-18': ResNet18(num_classes=67)
+    }
+
+    # OPTIMIZER CONFIGURATION
+    optimizer = {
+        'Adam': optim.Adam,
+        'RMSprop': optim.RMSprop,
+    }
+
+    device_ = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    _epoch = 1
+    if args.model_dir is None:
+        net = model_catalog[config['MODEL_NAME']]
+        net.to(device_)
+        print('Operation On:', device_)
+        # summary(model=net, input_size=(3, config['IMAGE_SIZE'], config['IMAGE_SIZE']))
+        with open(f"{SAVE_PATH_}/{config['MODEL_NAME']}_summary.txt", 'a') as f:
+            print(net, file=f)
+
+        optimizer_ = optimizer[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+    else:
+        net = model_catalog[config['MODEL_NAME']]
+        net_checkpoint = torch.load(Path(CHECKPOINT_PATH_))
+        net.load_state_dict(net_checkpoint['model_state_dict'])
+        net.to(device_)
+        print('Operation On:', device_)
+
+        optimizer_ = optimizer[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+        optimizer_.load_state_dict(net_checkpoint['optimizer_state_dict'])
+
+        epoch_ = net_checkpoint['epoch']
+        epoch_ += 1
+
+    # SCHEDULER CONFIGURATION
+    scheduler_opt = {
+        'ReduceLROnPlateau': torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer_, mode='min',
+            factor=config['FACTOR'],
+            patience=config['PATIENCE'], threshold=1e-3,
+            min_lr=config['MIN_LR'], verbose=True),
+        'ExponentialLR': torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer_, gamma=config['FACTOR']),
+        'lr_scheduler': lr_scheduler.MultiStepLR(optimizer_, milestones=[5], gamma=5e-5, last_epoch=-1)
+    }
+    scheduler_ = scheduler_opt[config['SCHEDULER']]
+
+    # LOSS FUNCTION CONFIGURATION
+    criterion_dict = {
+        'CrossEntropyLoss': nn.CrossEntropyLoss(),
+        'MSELoss': nn.MSELoss()
+    }
+    criterion_ = criterion_dict[config['LOSS_FUNCTION']]
+
+    return net, train_dataset, val_dataset, optimizer_, scheduler_, criterion_, device_, SAVE_PATH_, \
+           TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, config
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument('--model_dir', help='path to model in session folder in order to resume training using '
+                                            'checkpoint files', type=Path, required=False)
+
+    # CREATE SESSION AND CONFIGURE FOR TRAINING
+    model, train_dataset, val_dataset, optimizer, scheduler, criterion, device, SAVE_PATH, TRAINED_MODEL_PATH, \
+    CHECKPOINT_PATH, config = setup(args=parser.parse_args())
+
+    writer = SummaryWriter(log_dir=f'{SAVE_PATH}')
 
     best_valid_acc = 0
     epoch_since_improvement = 0
 
     # CREATE DATA LOADER FOR TRAIN, VALIDATION AND TEST
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, drop_last=True,
-                              pin_memory=True)
-    print(len(train_loader))
-    valid_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
-    print(len(valid_loader))
-    # test_loader = DataLoader(test_dataset, batch_size=batch_size, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'], shuffle=True,
+                              num_workers=config['NUM_WORKER'], drop_last=True, pin_memory=True)
 
-    # DEFINE MODEL, OPTIMIZER AND LOSS FUNCTION
-    model = ResNet18(num_classes=67)
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.CrossEntropyLoss()
-
-    # DEFINE LEARNING RATE SCHEDULER
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, min_lr=1e-5, verbose=True)
-
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
+    val_loader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'], shuffle=False,
+                            num_workers=config['NUM_WORKER'], pin_memory=True)
 
     # TRAINING LOOP
-    for epoch in range(num_epochs):
+    for epoch in range(config['EPOCHS']):
         # TRAIN THE MODEL
         epoch_iterator_train = tqdm(train_loader)
         train_loss = 0
@@ -84,41 +183,43 @@ if __name__ == "__main__":
         train_acc /= len(train_dataset)
 
         # VALIDATION THE MODEL
-        valid_loss = 0
-        valid_acc = 0
-        valid_predictions = []
-        valid_labels = []
-        epoch_iterator_val = tqdm(valid_loader)
+        val_loss = 0
+        val_acc = 0
+        val_predictions = []
+        val_labels = []
+        epoch_iterator_val = tqdm(val_loader)
         with torch.no_grad():
             for step, batch in enumerate(epoch_iterator_val):
                 model.eval()
                 images, labels = batch[0].to(device).float(), batch[1].to(device).long()
                 outputs = model(images)
                 loss = criterion(outputs, labels)
-                valid_loss += loss.item()
+                val_loss += loss.item()
                 epoch_iterator_val.set_postfix(
-                    batch_loss=(loss.item()), loss=(valid_loss / (step + 1))
+                    batch_loss=(loss.item()), loss=(val_loss / (step + 1))
                 )
-                valid_acc += (outputs.argmax(dim=1) == labels).sum().item()
-                valid_predictions.extend(outputs.argmax(dim=1).cpu().numpy())
-                valid_labels.extend(labels.cpu().numpy())
-        valid_loss /= len(val_dataset)
-        valid_acc /= len(val_dataset)
-        valid_balanced_acc = balanced_accuracy_score(valid_labels, valid_predictions)
+                val_acc += (outputs.argmax(dim=1) == labels).sum().item()
+                val_predictions.extend(outputs.argmax(dim=1).cpu().numpy())
+                val_labels.extend(labels.cpu().numpy())
+        val_loss /= len(val_dataset)
+        val_acc /= len(val_dataset)
+        valid_balanced_acc = balanced_accuracy_score(val_labels, val_predictions)
 
         # Print epoch results
-        print(f'Epoch {epoch + 1}:')
+        print(f"Epoch {epoch + 1}/{config['EPOCHS']}:")
         print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}')
-        print(f'Valid Loss: {valid_loss:.4f}, Valid Accuracy: {valid_acc:.4f}, Valid Balanced Accuracy:'
+        print(f'Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, Valid Balanced Accuracy:'
               f' {valid_balanced_acc:.4f}')
 
         # Save best trained_model
         if valid_balanced_acc > best_valid_acc:
             best_valid_acc = valid_balanced_acc
             epoch_since_improvement = 0
-            torch.save(model.state_dict(), 'trained_model/best_model-3.pt')
-            print(f'VALIDATION ACCURACY IMPROVED TO {valid_balanced_acc:.4f}.')
+            torch.save(model, TRAINED_MODEL_PATH.joinpath(f'VAL_BALANCED_ACC-{valid_balanced_acc:.4f}-'
+                                                          f'EPOCH-{epoch + 1}.pth'))
             print('BEST MODEL SAVED')
+            print(f'VALIDATION ACCURACY IMPROVED TO {valid_balanced_acc:.4f}.')
+
         else:
             epoch_since_improvement += 1
             print(
@@ -127,7 +228,22 @@ if __name__ == "__main__":
         # Update learning rate scheduler
         scheduler.step(valid_balanced_acc)
 
+        # LOG TENSORBOARD
+        writer.add_scalar('/Loss_train', train_loss, epoch)
+        writer.add_scalar('/Loss_validation', val_loss, epoch)
+
+        try:
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': train_loss,
+            }, CHECKPOINT_PATH)
+        except Exception as e:
+            print('MODEL DID NOT SAVE!')
+
         # Check if we should stop training early
-        if epoch_since_improvement > patience:
-            print(f'VALIDATION ACCURACY DID NOT IMPROVE FOR {patience} EPOCHS. TRAINING STOPPED.')
+        if epoch_since_improvement > config['EARLY_STOP']:
+            early_stop = config['EARLY_STOP']
+            print(f'VALIDATION ACCURACY DID NOT IMPROVE FOR {early_stop} EPOCHS. TRAINING STOPPED.')
             break
