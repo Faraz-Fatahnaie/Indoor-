@@ -4,22 +4,27 @@ from pathlib import Path
 import pickle
 
 
-def data_prepration():
-    data_dir = ".\data\Images"
+def data_prepration(root_dir: str):
+    """
+    This Function is for Processing MIT Indoor Scene Recognition and Should Run Once.
+    :param root_dir: Path to Root Folder of Images which Contains 67 Classes
+    :return: None (Two .txt File will Create Contained Image Path and Corresponding Label. Moreover, a Dictionary will
+    Create which the Keys are Class Name and the Values are an Integer Related to that Class Name)
+    """
+
     class_dict = {}
     base_dir = Path.cwd()
     train_images = []
     val_images = []
-    test_images = []
 
     # Create class dictionary
-    for i, d in enumerate(os.listdir(data_dir)):
-        if os.path.isdir(os.path.join(data_dir, d)):
+    for i, d in enumerate(os.listdir(root_dir)):
+        if os.path.isdir(os.path.join(root_dir, d)):
             class_dict[d] = i
 
     # Create a list of image paths and labels
     for class_name in class_dict.keys():
-        class_path = Path(os.path.join(data_dir, class_name))
+        class_path = Path(os.path.join(root_dir, class_name))
         class_images = []
         for image_file in os.listdir(class_path):
             if image_file.endswith(".jpg"):
@@ -53,4 +58,4 @@ def data_prepration():
 
 
 if __name__ == "__main__":
-    data_prepration()
+    data_prepration(root_dir=".\data\Images")

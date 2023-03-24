@@ -18,15 +18,15 @@ class MITIndoorDataset(Dataset):
         if line is not None:
             try:
                 img_path, label = line.split(" ")
-                # img = cv.imread(Path(img_path))
-                # img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
                 img = Image.open(img_path).convert('RGB')
                 if img is not None:
                     if self.transform:
                         img = self.transform(img)
                     return img, int(label)
             except:
-                print(line)
+                print('NOT PROCESSED: ', line)
+                pass
 
-# if __name__ == "__main__":
-#    MITIndoorDataset("data/train.txt").__getitem__(0)
+
+if __name__ == "__main__":
+    MITIndoorDataset("data/train.txt").__getitem__(0)
