@@ -27,11 +27,8 @@ def setup(args: Namespace):
     BASE_DIR = Path(__file__).resolve().parent
     while flag:
         if args.model_dir is None:
-            CONFIG_NAME = 'configs'  # config file name in config dir
-            CONFIGS_DIR = BASE_DIR.joinpath('config')
-            CONFIGS = open(f'{CONFIGS_DIR}/{CONFIG_NAME}.json')
-            CONFIGS = json.load(CONFIGS)
-            config = setting(CONFIGS)
+
+            config, config_file = setting()
 
             TEMP_PATH = BASE_DIR.joinpath(
                 f"session/{config['MODEL_NAME']}-{i}")
@@ -49,7 +46,7 @@ def setup(args: Namespace):
                 CHECKPOINT_PATH_ = SAVE_PATH_.joinpath(f"model_checkpoint/{config['MODEL_NAME']}-{i}.pt")
 
                 with open(f'{SAVE_PATH_}/MODEL_CONFIG.json', 'w') as f:
-                    json.dump(CONFIGS, f)
+                    json.dump(config_file, f)
         else:
             flag = False
             SAVE_PATH_ = args.model_dir
@@ -59,7 +56,7 @@ def setup(args: Namespace):
             CONFIGS = open(SAVE_PATH_.joinpath('MODEL_CONFIG.json'))
             CONFIGS = json.load(CONFIGS)
             print('JSON CONFIG FILE LOADED')
-            config = setting(CONFIGS)
+            config, _ = setting(CONFIGS)
 
     transformations = transforms.Compose([
         transforms.Resize((224, 224)),
