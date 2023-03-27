@@ -34,4 +34,5 @@ def setting(config_file=None):
         config['CHANNEL_MODE'] = 'Gray'
     else:
         config['CHANNEL_MODE'] = 'RGB'
+
     return config, config_file

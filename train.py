@@ -10,6 +10,7 @@ from tqdm import tqdm
 from dataset import MITIndoorDataset
 from models.CNN import CNN, SimpleCNN
 from models.ResNet import ResNet18, ResNet50
+from models.EfficientNetV2 import efficientnet_v2_s
 import os
 from argparse import Namespace, ArgumentParser
 from pathlib import Path
@@ -59,7 +60,7 @@ def setup(args: Namespace):
             config, _ = setting(CONFIGS)
 
     transformations = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((config['image_size'], config['image_size'])),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(10),
         transforms.ToTensor(),
@@ -67,7 +68,7 @@ def setup(args: Namespace):
     ])
 
     transformations_test = transforms.Compose([
-        transforms.Resize((224, 224)),
+        transforms.Resize((config['image_size'], config['image_size'])),
         transforms.ToTensor(),
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
@@ -80,7 +81,8 @@ def setup(args: Namespace):
         # 'efficientNet': efficientnet_b0(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'efficientNet_C': EfficientNetB0C(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'Vgg16FCorrelation': Vgg16FCorrelation(num_classes=1),
-        'resnet-18': ResNet18(num_classes=67)
+        'resnet-18': ResNet18(num_classes=67),
+        'efficientnet_v2_s': efficientnet_v2_s()
     }
 
     # OPTIMIZER CONFIGURATION
@@ -219,6 +221,11 @@ if __name__ == "__main__":
 
         else:
             epoch_since_improvement += 1
+            # Check if we should stop training early
+            if epoch_since_improvement >= config['EARLY_STOP']:
+                early_stop = config['EARLY_STOP']
+                print(f'VALIDATION ACCURACY DID NOT IMPROVE FOR {early_stop} EPOCHS. TRAINING STOPPED.')
+                break
             print(
                 f'VALIDATION ACCURACY DID NOT IMPROVE. EPOCHS SINCE LAST LAST IMPROVEMENT: {epoch_since_improvement}.')
 
@@ -238,9 +245,3 @@ if __name__ == "__main__":
             }, CHECKPOINT_PATH)
         except Exception as e:
             print('MODEL DID NOT SAVE!')
-
-        # Check if we should stop training early
-        if epoch_since_improvement > config['EARLY_STOP']:
-            early_stop = config['EARLY_STOP']
-            print(f'VALIDATION ACCURACY DID NOT IMPROVE FOR {early_stop} EPOCHS. TRAINING STOPPED.')
-            break

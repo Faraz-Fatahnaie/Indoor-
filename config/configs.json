@@ -8,10 +8,10 @@
     "n_worker": 4
   },
   "model": {
-    "name": "resnet-18",
-    "epoch": 50,
+    "name": "efficientnet_v2_s",
+    "epoch": 100,
     "batch_size": 16,
-    "optim": "RMSprop",
+    "optim": "Adam",
     "loss": "CrossEntropyLoss",
     "lr": 0.01,
     "min_lr": 0.000001,
