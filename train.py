@@ -11,6 +11,7 @@ from dataset import MITIndoorDataset
 from models.CNN import CNN, SimpleCNN
 from models.ResNet import ResNet18, ResNet50
 from models.EfficientNetV2 import efficientnet_v2_s
+from timm.models import vision_transformer as vits
 import os
 from argparse import Namespace, ArgumentParser
 from pathlib import Path
@@ -60,15 +61,17 @@ def setup(args: Namespace):
             config, _ = setting(CONFIGS)
 
     transformations = transforms.Compose([
-        transforms.Resize((config['image_size'], config['image_size'])),
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(10),
+        transforms.Resize((config['IMAGE_SIZE'], config['IMAGE_SIZE'])),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=(-10, 10)),
+        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+        transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.0)),
         transforms.ToTensor(),
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
 
     transformations_test = transforms.Compose([
-        transforms.Resize((config['image_size'], config['image_size'])),
+        transforms.Resize((config['IMAGE_SIZE'], config['IMAGE_SIZE'])),
         transforms.ToTensor(),
         transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
@@ -82,12 +85,14 @@ def setup(args: Namespace):
         # 'efficientNet_C': EfficientNetB0C(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'Vgg16FCorrelation': Vgg16FCorrelation(num_classes=1),
         'resnet-18': ResNet18(num_classes=67),
-        'efficientnet_v2_s': efficientnet_v2_s()
+        'efficientnet_v2_s': efficientnet_v2_s(),
+        'ViT': vits.vit_base_patch16_224(pretrained=False, num_classes=67)
     }
 
     # OPTIMIZER CONFIGURATION
     optimizer = {
         'Adam': optim.Adam,
+        'AdamW': optim.AdamW,
         'RMSprop': optim.RMSprop,
     }
 
@@ -118,12 +123,11 @@ def setup(args: Namespace):
     # SCHEDULER CONFIGURATION
     scheduler_opt = {
         'ReduceLROnPlateau': torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer_, mode='min',
-            factor=config['FACTOR'],
+            optimizer=optimizer_, mode='max', factor=config['FACTOR'],
             patience=config['PATIENCE'], threshold=1e-3,
             min_lr=config['MIN_LR'], verbose=True),
         'ExponentialLR': torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer_, gamma=config['FACTOR']),
-        'lr_scheduler': lr_scheduler.MultiStepLR(optimizer_, milestones=[5], gamma=5e-5, last_epoch=-1)
+        'lr_scheduler': lr_scheduler.MultiStepLR(optimizer=optimizer_, milestones=[5], gamma=5e-5, last_epoch=-1)
     }
     scheduler_ = scheduler_opt[config['SCHEDULER']]
 

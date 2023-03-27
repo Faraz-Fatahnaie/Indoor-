@@ -8,15 +8,15 @@
     "n_worker": 4
   },
   "model": {
-    "name": "efficientnet_v2_s",
+    "name": "resnet-18",
     "epoch": 100,
-    "batch_size": 16,
+    "batch_size": 8,
     "optim": "Adam",
     "loss": "CrossEntropyLoss",
     "lr": 0.01,
     "min_lr": 0.000001,
     "patience": 5,
-    "early_stop": 5,
+    "early_stop": 10,
     "factor": 0.1,
     "scheduler": "ReduceLROnPlateau"
   }
