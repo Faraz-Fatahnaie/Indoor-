@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 def evaluate(args: Namespace):
-    # LOAD MODEL
+
     model_path: Path = args.model
     root_path = Path(model_path).resolve().parent
 

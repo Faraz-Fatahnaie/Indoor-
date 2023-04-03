@@ -72,12 +72,11 @@ def error_analyzer(miss_classified_samples, class_dict):
         invrs_class_dict[index] = cls_name
 
     for i, ax in enumerate(axes.flat):
-        # show the image
+
         img, t, p = miss_classified_samples[random_index[i]]
         img = img.squeeze().permute(1, 2, 0)
         img = img.detach().cpu().numpy()
         ax.imshow(denormalize(img).permute(1, 2, 0))
-        # set the title as the true and predicted labels
         ax.set_title(f"True: {invrs_class_dict[t]}\nPred: {invrs_class_dict[p.item()]}")
         ax.axis("off")
 
@@ -100,7 +99,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description='Evaluate Trained Model on Test Set')
     parser.add_argument('--mcso', help="miss-classified samples object created by evaluate.py", type=Path)
 
-    mcso, class_dict = load_files(args=parser.parse_args())
+    mcso, cls_dict = load_files(args=parser.parse_args())
 
-    top_n_error_class(mcso, class_dict)
-    error_analyzer(mcso, class_dict)
+    top_n_error_class(mcso, cls_dict)
+    error_analyzer(mcso, cls_dict)
