@@ -10,14 +10,15 @@ from pathlib import Path
 
 
 def top_n_error_class(miss_classified_samples, class_dict, n=10):
-    """Given a list of misclassified samples and a dictionary mapping class,
+    """
+        Given a list of misclassified samples and a dictionary mapping class,
         returns the names of the top n classes with the highest misclassified samples.
 
         Args:
         - miss_classified_samples (list): a list of triplets (img, true_label, predicted_label)
             representing miss-classified samples.
         - class_dict (dict): A dictionary mapping class names to integer indices.
-        - n (int): The number of top classes to return. Defaults to 10.
+        - n (int): The number of top classes to return.
 
         Returns:
         - top_classes (list): A list of the highest misclassified samples.
@@ -50,7 +51,7 @@ def error_analyzer(miss_classified_samples, class_dict):
          integer labels (integers).
 
        Returns: None
-       """
+    """
 
     rows = 6
     cols = 10
@@ -97,7 +98,7 @@ def load_files(args: Namespace):
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Evaluate Trained Model on Test Set')
-    parser.add_argument('--mcso', help="miss-classified samples object created by evaluate.py", type=Path)
+    parser.add_argument('--mcso', help="miss-classified samples object created in evaluate.py", type=Path)
 
     mcso, cls_dict = load_files(args=parser.parse_args())
 
