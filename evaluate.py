@@ -27,7 +27,7 @@ def evaluate(args: Namespace):
     transformations_test = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        transforms.Normalize([0.4843, 0.4240, 0.3648], [0.0558, 0.0536, 0.0518])
     ])
 
     test_dataset = MITIndoorDataset("data/val.txt", transformations_test)

@@ -12,6 +12,7 @@ from models.CNN import CNN, SimpleCNN
 from models.ResNet import ResNet18, ResNet50
 from models.EfficientNetV2 import efficientnet_v2_s
 from timm.models import vision_transformer as vits
+from timm.data import Mixup
 import os
 from argparse import Namespace, ArgumentParser
 from pathlib import Path
@@ -62,18 +63,18 @@ def setup(args: Namespace):
 
     transformations = transforms.Compose([
         transforms.Resize((config['IMAGE_SIZE'], config['IMAGE_SIZE'])),
-        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomHorizontalFlip(p=0.3),
         transforms.RandomRotation(degrees=(-10, 10)),
         transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
         transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.0)),
         transforms.ToTensor(),
-        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        transforms.Normalize([0.4843, 0.4240, 0.3648], [0.0558, 0.0536, 0.0518])
     ])
 
     transformations_test = transforms.Compose([
         transforms.Resize((config['IMAGE_SIZE'], config['IMAGE_SIZE'])),
         transforms.ToTensor(),
-        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        transforms.Normalize([0.4843, 0.4240, 0.3648], [0.0558, 0.0536, 0.0518])
     ])
 
     train_dataset = MITIndoorDataset("data/train.txt", transformations)
@@ -163,7 +164,10 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'], shuffle=False,
                             num_workers=config['NUM_WORKER'], pin_memory=True)
 
+    mix_up = Mixup(mixup_alpha=.3, num_classes=67)
+
     # TRAINING LOOP
+    print('START TRAINING ...')
     for epoch in range(config['EPOCHS']):
         # TRAIN THE MODEL
         epoch_iterator_train = tqdm(train_loader)
@@ -172,16 +176,31 @@ if __name__ == "__main__":
         for step, batch in enumerate(epoch_iterator_train):
             model.train()
             images, labels = batch[0].to(device).float(), batch[1].to(device).long()
+
+            if config['augmentation'] == 1:
+                if len(images) % 2 != 0:
+                    images = images[:len(images) - 1, :, :, :]
+                    labels = labels[:len(labels) - 1]
+
+                images, labels = mix_up(images, labels)
             optimizer.zero_grad()
             outputs = model(images)
-            loss = criterion(outputs, labels)
+
+            if config['augmentation'] == 1:  # if mixup is used
+                loss = criterion(outputs, labels.argmax(1))
+            else:
+                loss = criterion(outputs, labels)
+
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
             epoch_iterator_train.set_postfix(
                 batch_loss=(loss.item()), loss=(train_loss / (step + 1))
             )
-            train_acc += (outputs.argmax(dim=1) == labels).sum().item()
+            if config['augmentation'] == 1:
+                train_acc += (outputs == labels).sum().item()
+            else:
+                train_acc += (outputs.argmax(dim=1) == labels).sum().item()
         train_loss /= len(train_dataset)
         train_acc /= len(train_dataset)
 
