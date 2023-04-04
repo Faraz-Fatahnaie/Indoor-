@@ -98,7 +98,7 @@ def load_files(args: Namespace):
 
 if __name__ == "__main__":
     parser = ArgumentParser(description='Evaluate Trained Model on Test Set')
-    parser.add_argument('--mcso', help="miss-classified samples object created by evaluate.py", type=Path)
+    parser.add_argument('--mcso', help="miss-classified samples object created in evaluate.py", type=Path)
 
     mcso, cls_dict = load_files(args=parser.parse_args())
 
