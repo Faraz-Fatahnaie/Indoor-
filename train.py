@@ -18,6 +18,7 @@ from argparse import Namespace, ArgumentParser
 from pathlib import Path
 import json
 from config.setting import setting
+from utils import cutmix
 
 
 def setup(args: Namespace):
@@ -57,6 +58,7 @@ def setup(args: Namespace):
             SAVE_PATH_ = args.model_dir
             model_dir_name = str(SAVE_PATH_).split(os.sep)[-1]  # .pt file is saving with name of folder name in session
             CHECKPOINT_PATH_ = SAVE_PATH_.joinpath(f'model_checkpoint/{model_dir_name}.pt')
+            TRAINED_MODEL_PATH_ = SAVE_PATH_.joinpath('trained_models')
 
             CONFIGS = open(SAVE_PATH_.joinpath('MODEL_CONFIG.json'))
             CONFIGS = json.load(CONFIGS)
@@ -79,8 +81,8 @@ def setup(args: Namespace):
         transforms.Normalize([0.4843, 0.4240, 0.3648], [0.0558, 0.0536, 0.0518])
     ])
 
-    train_dataset = MITIndoorDataset("data/train.txt", transformations)
-    val_dataset = MITIndoorDataset("data/val.txt", transformations_test)
+    train_ds = MITIndoorDataset("data/train.txt", transformations)
+    val_ds = MITIndoorDataset("data/val.txt", transformations_test)
 
     # MODEL CONFIGURATION
     model_catalog = {
@@ -93,7 +95,7 @@ def setup(args: Namespace):
     }
 
     # OPTIMIZER CONFIGURATION
-    optimizer = {
+    opt = {
         'Adam': optim.Adam,
         'AdamW': optim.AdamW,
         'RMSprop': optim.RMSprop,
@@ -109,7 +111,7 @@ def setup(args: Namespace):
         with open(f"{SAVE_PATH_}/{config['MODEL_NAME']}_summary.txt", 'a') as f:
             print(net, file=f)
 
-        optimizer_ = optimizer[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
     else:
         net = model_catalog[config['MODEL_NAME']]
         net_checkpoint = torch.load(Path(CHECKPOINT_PATH_))
@@ -117,7 +119,7 @@ def setup(args: Namespace):
         net.to(device_)
         print('Operation On:', device_)
 
-        optimizer_ = optimizer[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
         optimizer_.load_state_dict(net_checkpoint['optimizer_state_dict'])
 
         epoch_ = net_checkpoint['epoch']
@@ -141,7 +143,7 @@ def setup(args: Namespace):
     }
     criterion_ = criterion_dict[config['LOSS_FUNCTION']]
 
-    return net, train_dataset, val_dataset, optimizer_, scheduler_, criterion_, device_, SAVE_PATH_, \
+    return net, train_ds, val_ds, optimizer_, scheduler_, criterion_, device_, SAVE_PATH_, \
            TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, config
 
 
@@ -177,14 +179,20 @@ if __name__ == "__main__":
         train_acc = 0
         for step, batch in enumerate(epoch_iterator_train):
             model.train()
-            images, labels = batch[0].to(device).float(), batch[1].to(device).long()
+            images, labels = batch[0], batch[1]
 
-            if config['augmentation'] == 1:
+            if config['augmentation'] == 1:  # MIXUP
                 if len(images) % 2 != 0:
                     images = images[:len(images) - 1, :, :, :]
                     labels = labels[:len(labels) - 1]
 
                 images, labels = mix_up(images, labels)
+
+            if config['augmentation'] == 2:  # CUTMIX
+                inputs, labels = cutmix(images, labels, alpha=1.0)
+
+            images, labels = images.to(device).float(), labels.to(device).long()
+
             optimizer.zero_grad()
             outputs = model(images)
 
