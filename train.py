@@ -50,6 +50,8 @@ def setup(args: Namespace):
 
                 with open(f'{SAVE_PATH_}/MODEL_CONFIG.json', 'w') as f:
                     json.dump(config_file, f)
+
+                print(f'MODEL SESSION: {SAVE_PATH_}')
         else:
             flag = False
             SAVE_PATH_ = args.model_dir
@@ -63,9 +65,9 @@ def setup(args: Namespace):
 
     transformations = transforms.Compose([
         transforms.Resize((config['IMAGE_SIZE'], config['IMAGE_SIZE'])),
-        transforms.RandomHorizontalFlip(p=0.3),
-        transforms.RandomRotation(degrees=(-10, 10)),
-        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=(-20, 20)),
+        transforms.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.3),
         transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.0)),
         transforms.ToTensor(),
         transforms.Normalize([0.4843, 0.4240, 0.3648], [0.0558, 0.0536, 0.0518])
@@ -85,7 +87,7 @@ def setup(args: Namespace):
         # 'efficientNet': efficientnet_b0(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'efficientNet_C': EfficientNetB0C(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'Vgg16FCorrelation': Vgg16FCorrelation(num_classes=1),
-        'resnet-18': ResNet18(num_classes=67),
+        'resnet-18': ResNet18(num_classes=67, dropout=0.5),
         'efficientnet_v2_s': efficientnet_v2_s(),
         'ViT': vits.vit_base_patch16_224(pretrained=False, num_classes=67)
     }
@@ -164,7 +166,7 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'], shuffle=False,
                             num_workers=config['NUM_WORKER'], pin_memory=True)
 
-    mix_up = Mixup(mixup_alpha=.3, num_classes=67)
+    mix_up = Mixup(mixup_alpha=.2, num_classes=67)
 
     # TRAINING LOOP
     print('START TRAINING ...')
@@ -198,6 +200,7 @@ if __name__ == "__main__":
                 batch_loss=(loss.item()), loss=(train_loss / (step + 1))
             )
             if config['augmentation'] == 1:
+                # TODO: this should be fixed
                 train_acc += (outputs == labels).sum().item()
             else:
                 train_acc += (outputs.argmax(dim=1) == labels).sum().item()
@@ -229,6 +232,7 @@ if __name__ == "__main__":
 
         # Print epoch results
         print(f"Epoch {epoch + 1}/{config['EPOCHS']}:")
+        print(f"LR: {scheduler.optimizer.param_groups[0]['lr']}")
         print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}')
         print(f'Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, Valid Balanced Accuracy:'
               f' {valid_balanced_acc:.4f}')

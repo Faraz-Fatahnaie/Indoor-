@@ -30,7 +30,7 @@ class ResidualBlock(nn.Module):
 
 
 class ResNet18(nn.Module):
-    def __init__(self, num_classes=67):
+    def __init__(self, num_classes=67, dropout=None):
         super(ResNet18, self).__init__()
         self.in_channels = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -43,6 +43,9 @@ class ResNet18(nn.Module):
         self.layer4 = self._make_layer(ResidualBlock, 512, 2, stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512, num_classes)
+        self.dropout = dropout
+        if dropout is not None:
+            self.dropout_layer = nn.Dropout(p=dropout)
 
     def _make_layer(self, block, out_channels, num_blocks, stride):
         strides = [stride] + [1] * (num_blocks - 1)
@@ -63,6 +66,8 @@ class ResNet18(nn.Module):
         x = self.layer4(x)
         x = self.avgpool(x)
         x = x.reshape(x.shape[0], -1)
+        if self.dropout is not None:
+            x = self.dropout_layer(x)
         x = self.fc(x)
         return x
 
