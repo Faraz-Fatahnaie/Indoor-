@@ -102,7 +102,7 @@ def setup(args: Namespace):
     }
 
     device_ = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    _epoch = 1
+    epoch_ = 0
     if args.model_dir is None:
         net = model_catalog[config['MODEL_NAME']]
         net.to(device_)
@@ -123,7 +123,6 @@ def setup(args: Namespace):
         optimizer_.load_state_dict(net_checkpoint['optimizer_state_dict'])
 
         epoch_ = net_checkpoint['epoch']
-        epoch_ += 1
 
     # SCHEDULER CONFIGURATION
     scheduler_opt = {
@@ -144,7 +143,7 @@ def setup(args: Namespace):
     criterion_ = criterion_dict[config['LOSS_FUNCTION']]
 
     return net, train_ds, val_ds, optimizer_, scheduler_, criterion_, device_, SAVE_PATH_, \
-           TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, config
+           TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, epoch_, config
 
 
 if __name__ == "__main__":
@@ -154,7 +153,7 @@ if __name__ == "__main__":
 
     # CREATE SESSION AND CONFIGURE FOR TRAINING
     model, train_dataset, val_dataset, optimizer, scheduler, criterion, device, SAVE_PATH, TRAINED_MODEL_PATH, \
-    CHECKPOINT_PATH, config = setup(args=parser.parse_args())
+    CHECKPOINT_PATH, pre_epoch, config = setup(args=parser.parse_args())
 
     writer = SummaryWriter(log_dir=f'{SAVE_PATH}')
 
@@ -239,7 +238,7 @@ if __name__ == "__main__":
         valid_balanced_acc = balanced_accuracy_score(val_labels, val_predictions)
 
         # Print epoch results
-        print(f"Epoch {epoch + 1}/{config['EPOCHS']}:")
+        print(f"Epoch {epoch + pre_epoch + 1}/{config['EPOCHS']}:")
         print(f"LR: {scheduler.optimizer.param_groups[0]['lr']}")
         print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}')
         print(f'Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, Valid Balanced Accuracy:'
@@ -250,7 +249,7 @@ if __name__ == "__main__":
             best_valid_acc = valid_balanced_acc
             epoch_since_improvement = 0
             torch.save(model, TRAINED_MODEL_PATH.joinpath(f'VAL_BALANCED_ACC-{valid_balanced_acc:.4f}-'
-                                                          f'EPOCH-{epoch + 1}.pth'))
+                                                          f'EPOCH-{epoch + pre_epoch + 1}.pth'))
             print('BEST MODEL SAVED')
             print(f'VALIDATION ACCURACY IMPROVED TO {valid_balanced_acc:.4f}.')
 
@@ -268,12 +267,12 @@ if __name__ == "__main__":
         scheduler.step(valid_balanced_acc)
 
         # LOG TENSORBOARD
-        writer.add_scalar('/Loss_train', train_loss, epoch)
-        writer.add_scalar('/Loss_validation', val_loss, epoch)
+        writer.add_scalar('/Loss_train', train_loss, epoch + pre_epoch)
+        writer.add_scalar('/Loss_validation', val_loss, epoch + pre_epoch)
 
         try:
             torch.save({
-                'epoch': epoch,
+                'epoch': epoch + pre_epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': train_loss,
