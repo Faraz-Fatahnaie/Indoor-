@@ -103,6 +103,7 @@ def setup(args: Namespace):
 
     device_ = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     epoch_ = 0
+    best_val_criteria_ = 0
     if args.model_dir is None:
         net = model_catalog[config['MODEL_NAME']]
         net.to(device_)
@@ -123,6 +124,7 @@ def setup(args: Namespace):
         optimizer_.load_state_dict(net_checkpoint['optimizer_state_dict'])
 
         epoch_ = net_checkpoint['epoch']
+        best_val_criteria_ = net_checkpoint['best_val_criteria']
 
     # SCHEDULER CONFIGURATION
     scheduler_opt = {
@@ -143,7 +145,7 @@ def setup(args: Namespace):
     criterion_ = criterion_dict[config['LOSS_FUNCTION']]
 
     return net, train_ds, val_ds, optimizer_, scheduler_, criterion_, device_, SAVE_PATH_, \
-           TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, epoch_, config
+           TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, epoch_, best_val_criteria_, config
 
 
 if __name__ == "__main__":
@@ -153,11 +155,11 @@ if __name__ == "__main__":
 
     # CREATE SESSION AND CONFIGURE FOR TRAINING
     model, train_dataset, val_dataset, optimizer, scheduler, criterion, device, SAVE_PATH, TRAINED_MODEL_PATH, \
-    CHECKPOINT_PATH, pre_epoch, config = setup(args=parser.parse_args())
+    CHECKPOINT_PATH, pre_epoch, best_val_criteria, config = setup(args=parser.parse_args())
 
     writer = SummaryWriter(log_dir=f'{SAVE_PATH}')
 
-    best_valid_acc = 0
+    best_valid_acc = best_val_criteria
     epoch_since_improvement = 0
 
     # CREATE DATA LOADER FOR TRAIN, VALIDATION AND TEST
@@ -273,6 +275,7 @@ if __name__ == "__main__":
         try:
             torch.save({
                 'epoch': epoch + pre_epoch + 1,
+                'best_val_criteria': best_valid_acc,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': train_loss,
