@@ -1,4 +1,5 @@
 data
 session
+config/configs.json
 .idea
 *.pkl
