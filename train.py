@@ -18,6 +18,7 @@ from argparse import Namespace, ArgumentParser
 from pathlib import Path
 import json
 from config.setting import setting
+from utils import cutmix
 
 
 def setup(args: Namespace):
@@ -50,11 +51,14 @@ def setup(args: Namespace):
 
                 with open(f'{SAVE_PATH_}/MODEL_CONFIG.json', 'w') as f:
                     json.dump(config_file, f)
+
+                print(f'MODEL SESSION: {SAVE_PATH_}')
         else:
             flag = False
             SAVE_PATH_ = args.model_dir
             model_dir_name = str(SAVE_PATH_).split(os.sep)[-1]  # .pt file is saving with name of folder name in session
             CHECKPOINT_PATH_ = SAVE_PATH_.joinpath(f'model_checkpoint/{model_dir_name}.pt')
+            TRAINED_MODEL_PATH_ = SAVE_PATH_.joinpath('trained_models')
 
             CONFIGS = open(SAVE_PATH_.joinpath('MODEL_CONFIG.json'))
             CONFIGS = json.load(CONFIGS)
@@ -63,9 +67,9 @@ def setup(args: Namespace):
 
     transformations = transforms.Compose([
         transforms.Resize((config['IMAGE_SIZE'], config['IMAGE_SIZE'])),
-        transforms.RandomHorizontalFlip(p=0.3),
-        transforms.RandomRotation(degrees=(-10, 10)),
-        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=(-20, 20)),
+        transforms.ColorJitter(brightness=0.3, contrast=0.4, saturation=0.3),
         transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.0)),
         transforms.ToTensor(),
         transforms.Normalize([0.4843, 0.4240, 0.3648], [0.0558, 0.0536, 0.0518])
@@ -77,28 +81,29 @@ def setup(args: Namespace):
         transforms.Normalize([0.4843, 0.4240, 0.3648], [0.0558, 0.0536, 0.0518])
     ])
 
-    train_dataset = MITIndoorDataset("data/train.txt", transformations)
-    val_dataset = MITIndoorDataset("data/val.txt", transformations_test)
+    train_ds = MITIndoorDataset("data/train.txt", transformations)
+    val_ds = MITIndoorDataset("data/val.txt", transformations_test)
 
     # MODEL CONFIGURATION
     model_catalog = {
         # 'efficientNet': efficientnet_b0(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'efficientNet_C': EfficientNetB0C(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'Vgg16FCorrelation': Vgg16FCorrelation(num_classes=1),
-        'resnet-18': ResNet18(num_classes=67),
+        'resnet-18': ResNet18(num_classes=67, dropout=0.5),
         'efficientnet_v2_s': efficientnet_v2_s(),
         'ViT': vits.vit_base_patch16_224(pretrained=False, num_classes=67)
     }
 
     # OPTIMIZER CONFIGURATION
-    optimizer = {
+    opt = {
         'Adam': optim.Adam,
         'AdamW': optim.AdamW,
         'RMSprop': optim.RMSprop,
     }
 
     device_ = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    _epoch = 1
+    epoch_ = 0
+    best_val_criteria_ = 0
     if args.model_dir is None:
         net = model_catalog[config['MODEL_NAME']]
         net.to(device_)
@@ -107,7 +112,7 @@ def setup(args: Namespace):
         with open(f"{SAVE_PATH_}/{config['MODEL_NAME']}_summary.txt", 'a') as f:
             print(net, file=f)
 
-        optimizer_ = optimizer[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
     else:
         net = model_catalog[config['MODEL_NAME']]
         net_checkpoint = torch.load(Path(CHECKPOINT_PATH_))
@@ -115,11 +120,11 @@ def setup(args: Namespace):
         net.to(device_)
         print('Operation On:', device_)
 
-        optimizer_ = optimizer[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
         optimizer_.load_state_dict(net_checkpoint['optimizer_state_dict'])
 
         epoch_ = net_checkpoint['epoch']
-        epoch_ += 1
+        best_val_criteria_ = net_checkpoint['best_val_criteria']
 
     # SCHEDULER CONFIGURATION
     scheduler_opt = {
@@ -139,8 +144,8 @@ def setup(args: Namespace):
     }
     criterion_ = criterion_dict[config['LOSS_FUNCTION']]
 
-    return net, train_dataset, val_dataset, optimizer_, scheduler_, criterion_, device_, SAVE_PATH_, \
-           TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, config
+    return net, train_ds, val_ds, optimizer_, scheduler_, criterion_, device_, SAVE_PATH_, \
+           TRAINED_MODEL_PATH_, CHECKPOINT_PATH_, epoch_, best_val_criteria_, config
 
 
 if __name__ == "__main__":
@@ -150,11 +155,11 @@ if __name__ == "__main__":
 
     # CREATE SESSION AND CONFIGURE FOR TRAINING
     model, train_dataset, val_dataset, optimizer, scheduler, criterion, device, SAVE_PATH, TRAINED_MODEL_PATH, \
-    CHECKPOINT_PATH, config = setup(args=parser.parse_args())
+    CHECKPOINT_PATH, pre_epoch, best_val_criteria, config = setup(args=parser.parse_args())
 
     writer = SummaryWriter(log_dir=f'{SAVE_PATH}')
 
-    best_valid_acc = 0
+    best_valid_acc = best_val_criteria
     epoch_since_improvement = 0
 
     # CREATE DATA LOADER FOR TRAIN, VALIDATION AND TEST
@@ -164,7 +169,7 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'], shuffle=False,
                             num_workers=config['NUM_WORKER'], pin_memory=True)
 
-    mix_up = Mixup(mixup_alpha=.3, num_classes=67)
+    mix_up = Mixup(mixup_alpha=.2, num_classes=67)
 
     # TRAINING LOOP
     print('START TRAINING ...')
@@ -175,14 +180,20 @@ if __name__ == "__main__":
         train_acc = 0
         for step, batch in enumerate(epoch_iterator_train):
             model.train()
-            images, labels = batch[0].to(device).float(), batch[1].to(device).long()
+            images, labels = batch[0], batch[1]
 
-            if config['augmentation'] == 1:
+            if config['augmentation'] == 1:  # MIXUP
                 if len(images) % 2 != 0:
                     images = images[:len(images) - 1, :, :, :]
                     labels = labels[:len(labels) - 1]
 
                 images, labels = mix_up(images, labels)
+
+            if config['augmentation'] == 2:  # CUTMIX
+                inputs, labels = cutmix(images, labels, alpha=1.0)
+
+            images, labels = images.to(device).float(), labels.to(device).long()
+
             optimizer.zero_grad()
             outputs = model(images)
 
@@ -198,6 +209,7 @@ if __name__ == "__main__":
                 batch_loss=(loss.item()), loss=(train_loss / (step + 1))
             )
             if config['augmentation'] == 1:
+                # TODO: this should be fixed
                 train_acc += (outputs == labels).sum().item()
             else:
                 train_acc += (outputs.argmax(dim=1) == labels).sum().item()
@@ -228,7 +240,8 @@ if __name__ == "__main__":
         valid_balanced_acc = balanced_accuracy_score(val_labels, val_predictions)
 
         # Print epoch results
-        print(f"Epoch {epoch + 1}/{config['EPOCHS']}:")
+        print(f"Epoch {epoch + pre_epoch + 1}/{config['EPOCHS']}:")
+        print(f"LR: {scheduler.optimizer.param_groups[0]['lr']}")
         print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}')
         print(f'Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, Valid Balanced Accuracy:'
               f' {valid_balanced_acc:.4f}')
@@ -238,7 +251,7 @@ if __name__ == "__main__":
             best_valid_acc = valid_balanced_acc
             epoch_since_improvement = 0
             torch.save(model, TRAINED_MODEL_PATH.joinpath(f'VAL_BALANCED_ACC-{valid_balanced_acc:.4f}-'
-                                                          f'EPOCH-{epoch + 1}.pth'))
+                                                          f'EPOCH-{epoch + pre_epoch + 1}.pth'))
             print('BEST MODEL SAVED')
             print(f'VALIDATION ACCURACY IMPROVED TO {valid_balanced_acc:.4f}.')
 
@@ -256,12 +269,13 @@ if __name__ == "__main__":
         scheduler.step(valid_balanced_acc)
 
         # LOG TENSORBOARD
-        writer.add_scalar('/Loss_train', train_loss, epoch)
-        writer.add_scalar('/Loss_validation', val_loss, epoch)
+        writer.add_scalar('/Loss_train', train_loss, epoch + pre_epoch)
+        writer.add_scalar('/Loss_validation', val_loss, epoch + pre_epoch)
 
         try:
             torch.save({
-                'epoch': epoch,
+                'epoch': epoch + pre_epoch + 1,
+                'best_val_criteria': best_valid_acc,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'loss': train_loss,

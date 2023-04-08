@@ -73,14 +73,12 @@ def error_analyzer(miss_classified_samples, class_dict):
         invrs_class_dict[index] = cls_name
 
     for i, ax in enumerate(axes.flat):
-
         img, t, p = miss_classified_samples[random_index[i]]
         img = img.squeeze().permute(1, 2, 0)
         img = img.detach().cpu().numpy()
         ax.imshow(denormalize(img).permute(1, 2, 0))
         ax.set_title(f"True: {invrs_class_dict[t]}\nPred: {invrs_class_dict[p.item()]}")
         ax.axis("off")
-
     plt.show()
 
 
