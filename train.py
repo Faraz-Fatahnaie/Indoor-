@@ -8,7 +8,6 @@ import torch.optim as optim
 from sklearn.metrics import balanced_accuracy_score
 from tqdm import tqdm
 from dataset import MITIndoorDataset
-from models.CNN import CNN, SimpleCNN
 from models.ResNet import ResNet18, ResNet50
 from models.EfficientNetV2 import efficientnet_v2_s
 from timm.models import vision_transformer as vits
@@ -20,6 +19,7 @@ from pathlib import Path
 import json
 from config.setting import setting
 from utils import cutmix
+import logging
 
 
 def setup(args: Namespace):
@@ -87,9 +87,6 @@ def setup(args: Namespace):
 
     # MODEL CONFIGURATION
     model_catalog = {
-        # 'efficientNet': efficientnet_b0(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
-        # 'efficientNet_C': EfficientNetB0C(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
-        # 'Vgg16FCorrelation': Vgg16FCorrelation(num_classes=1),
         'resnet-50': ResNet50(dropout=0.5),
         'resnet-18': ResNet18(dropout=0.5),
         'inception_v3': InceptionV3(),
@@ -164,6 +161,8 @@ if __name__ == "__main__":
     model, train_dataset, val_dataset, optimizer, scheduler, criterion, device, SAVE_PATH, TRAINED_MODEL_PATH, \
     CHECKPOINT_PATH, pre_epoch, best_val_criteria, config = setup(args=parser.parse_args())
 
+    # Set up logging
+    logging.basicConfig(filename=f'{SAVE_PATH}/training.log', level=logging.INFO)
     writer = SummaryWriter(log_dir=f'{SAVE_PATH}')
 
     best_valid_acc = best_val_criteria
@@ -211,8 +210,10 @@ if __name__ == "__main__":
             else:
                 loss = criterion(outputs, labels)
 
-            if config['REGULARIZATION'] == 'L2':  # L2 regularization
-                loss += 0.001 * torch.norm(model.fc.weight, 2)
+            if config['REGULARIZATION'] == 'L1':  # L2 regularization
+                loss += 0.01 * torch.norm(model.fc.weight, 1)
+            elif config['REGULARIZATION'] == 'L2':
+                loss += 0.01 * torch.norm(model.fc.weight, 2)
 
             loss.backward()
             optimizer.step()
@@ -252,11 +253,17 @@ if __name__ == "__main__":
         valid_balanced_acc = balanced_accuracy_score(val_labels, val_predictions)
 
         # Print epoch results
-        print(f"Epoch {epoch + pre_epoch + 1}/{config['EPOCHS']}:")
-        print(f"LR: {scheduler.optimizer.param_groups[0]['lr']}")
-        print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}')
-        print(f'Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, Valid Balanced Accuracy:'
-              f' {valid_balanced_acc:.4f}')
+        log = f"Epoch {epoch + pre_epoch + 1}/{config['EPOCHS']}:\n" \
+              f"LR: {scheduler.optimizer.param_groups[0]['lr']}\n" \
+              f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}\n" \
+              f"Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, " \
+              f"Valid Balanced Accuracy: {valid_balanced_acc:.4f}"
+        print(log)
+        #print(f"Epoch {epoch + pre_epoch + 1}/{config['EPOCHS']}:")
+        #print(f"LR: {scheduler.optimizer.param_groups[0]['lr']}")
+        #print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}')
+        #print(f'Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, Valid Balanced Accuracy:'
+        #      f' {valid_balanced_acc:.4f}')
 
         # Save best trained_model
         if valid_balanced_acc > best_valid_acc:
@@ -284,7 +291,11 @@ if __name__ == "__main__":
         else:
             scheduler.step(valid_balanced_acc)
 
-        # LOG TENSORBOARD
+        # LOGGING
+        #logging.info(f'Epoch: {epoch + pre_epoch}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}, '
+        #             f'Validation Loss{val_loss:.4f}, Validation Accuracy: {val_acc:.4f}, '
+        #             f'Validation Balanced Accuracy: {valid_balanced_acc:.4f}')
+        logging.info(log)
         writer.add_scalar('/Loss_train', train_loss, epoch + pre_epoch)
         writer.add_scalar('/Loss_validation', val_loss, epoch + pre_epoch)
 
