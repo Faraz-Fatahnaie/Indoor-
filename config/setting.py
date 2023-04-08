@@ -15,20 +15,25 @@ def setting(config_file=None):
     config['MIT'] = BASE_DIR.joinpath('data')
     config['N_CHANNEL'] = config_file['dataset']['n_channel']
     config['IMAGE_SIZE'] = config_file['dataset']['image_size']
-    config['augmentation'] = config_file['dataset']['augmentation']
+    config['AUGMENTATION'] = config_file['dataset']['augmentation']
     config['NUM_WORKER'] = config_file['dataset']['n_worker']
 
     config['MODEL_NAME'] = config_file['model']['name']
-    config['LR'] = config_file['model']['lr']
+
     config['LOSS_FUNCTION'] = config_file['model']['loss']
     config['EPOCHS'] = config_file['model']['epoch']
     config['BATCH_SIZE'] = config_file['model']['batch_size']
+    config['OPTIMIZER'] = config_file['model']['optim']
+    config['LR'] = config_file['model']['lr']
+    config['WEIGHT_DECAY'] = config_file['model']['weight_decay']
+    config['SCHEDULER'] = config_file['model']['scheduler']
     config['MIN_LR'] = config_file['model']['min_lr']
     config['PATIENCE'] = config_file['model']['patience']
     config['EARLY_STOP'] = config_file['model']['early_stop']
     config['FACTOR'] = config_file['model']['factor']
-    config['SCHEDULER'] = config_file['model']['scheduler']
-    config['OPTIMIZER'] = config_file['model']['optim']
+    config['GAMMA'] = config_file['model']['gamma']
+    config['REGULARIZATION'] = config_file['model']['regularization']
+
 
     if config['N_CHANNEL'] == 1:
         config['CHANNEL_MODE'] = 'Gray'
