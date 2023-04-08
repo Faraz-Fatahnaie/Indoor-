@@ -1,25 +1,27 @@
+import json
+import logging
+import os
+from argparse import ArgumentParser, Namespace
+from pathlib import Path
+
 import torch
-from torch.optim import lr_scheduler
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.metrics import balanced_accuracy_score
+from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+import torchvision.transforms as transforms
 from tqdm import tqdm
-from dataset import MITIndoorDataset
-from models.ResNet import ResNet18, ResNet50
-from models.EfficientNetV2 import efficientnet_v2_s
-from timm.models import vision_transformer as vits
-from models.InceptionV3 import InceptionV3
-from timm.data import Mixup
-import os
-from argparse import Namespace, ArgumentParser
-from pathlib import Path
-import json
+
 from config.setting import setting
+from dataset import MITIndoorDataset
+from models.EfficientNetV2 import efficientnet_v2_s
+from models.InceptionV3 import InceptionV3
+from models.ResNet import ResNet18, ResNet50
+from timm.data import Mixup
+from timm.models import vision_transformer as vits
 from utils import cutmix
-import logging
 
 
 def setup(args: Namespace):
@@ -259,13 +261,8 @@ if __name__ == "__main__":
               f"Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, " \
               f"Valid Balanced Accuracy: {valid_balanced_acc:.4f}"
         print(log)
-        #print(f"Epoch {epoch + pre_epoch + 1}/{config['EPOCHS']}:")
-        #print(f"LR: {scheduler.optimizer.param_groups[0]['lr']}")
-        #print(f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}')
-        #print(f'Valid Loss: {val_loss:.4f}, Valid Accuracy: {val_acc:.4f}, Valid Balanced Accuracy:'
-        #      f' {valid_balanced_acc:.4f}')
 
-        # Save best trained_model
+        # Save Best Trained Model
         if valid_balanced_acc > best_valid_acc:
             best_valid_acc = valid_balanced_acc
             epoch_since_improvement = 0
@@ -284,7 +281,7 @@ if __name__ == "__main__":
             print(
                 f'VALIDATION ACCURACY DID NOT IMPROVE. EPOCHS SINCE LAST LAST IMPROVEMENT: {epoch_since_improvement}.')
 
-        # Update learning rate scheduler
+        # Update Learning Rate Scheduler
         if config['SCHEDULER'] in ['ExponentialLR', 'lr_scheduler']:
             print(config['SCHEDULER'])
             scheduler.step()
@@ -292,9 +289,6 @@ if __name__ == "__main__":
             scheduler.step(valid_balanced_acc)
 
         # LOGGING
-        #logging.info(f'Epoch: {epoch + pre_epoch}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_acc:.4f}, '
-        #             f'Validation Loss{val_loss:.4f}, Validation Accuracy: {val_acc:.4f}, '
-        #             f'Validation Balanced Accuracy: {valid_balanced_acc:.4f}')
         logging.info(log)
         writer.add_scalar('/Loss_train', train_loss, epoch + pre_epoch)
         writer.add_scalar('/Loss_validation', val_loss, epoch + pre_epoch)
