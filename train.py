@@ -12,6 +12,7 @@ from models.CNN import CNN, SimpleCNN
 from models.ResNet import ResNet18, ResNet50
 from models.EfficientNetV2 import efficientnet_v2_s
 from timm.models import vision_transformer as vits
+from models.InceptionV3 import InceptionV3
 from timm.data import Mixup
 import os
 from argparse import Namespace, ArgumentParser
@@ -89,7 +90,9 @@ def setup(args: Namespace):
         # 'efficientNet': efficientnet_b0(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'efficientNet_C': EfficientNetB0C(in_channels=config['N_CHANNEL'], pretrained=True, num_classes=1),
         # 'Vgg16FCorrelation': Vgg16FCorrelation(num_classes=1),
-        'resnet-18': ResNet18(num_classes=67, dropout=0.5),
+        'resnet-50': ResNet50(dropout=0.5),
+        'resnet-18': ResNet18(dropout=0.5),
+        'inception_v3': InceptionV3(),
         'efficientnet_v2_s': efficientnet_v2_s(),
         'ViT': vits.vit_base_patch16_224(pretrained=False, num_classes=67)
     }
@@ -99,6 +102,7 @@ def setup(args: Namespace):
         'Adam': optim.Adam,
         'AdamW': optim.AdamW,
         'RMSprop': optim.RMSprop,
+        'SGD': optim.SGD
     }
 
     device_ = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -112,7 +116,7 @@ def setup(args: Namespace):
         with open(f"{SAVE_PATH_}/{config['MODEL_NAME']}_summary.txt", 'a') as f:
             print(net, file=f)
 
-        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'], weight_decay=config['WEIGHT_DECAY'])
     else:
         net = model_catalog[config['MODEL_NAME']]
         net_checkpoint = torch.load(Path(CHECKPOINT_PATH_))
@@ -120,7 +124,7 @@ def setup(args: Namespace):
         net.to(device_)
         print('Operation On:', device_)
 
-        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'])
+        optimizer_ = opt[config['OPTIMIZER']](net.parameters(), lr=config['LR'], weight_decay=config['WEIGHT_DECAY'])
         optimizer_.load_state_dict(net_checkpoint['optimizer_state_dict'])
 
         epoch_ = net_checkpoint['epoch']
@@ -128,12 +132,15 @@ def setup(args: Namespace):
 
     # SCHEDULER CONFIGURATION
     scheduler_opt = {
-        'ReduceLROnPlateau': torch.optim.lr_scheduler.ReduceLROnPlateau(
+        'ReduceLROnPlateau': lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer_, mode='max', factor=config['FACTOR'],
             patience=config['PATIENCE'], threshold=1e-3,
             min_lr=config['MIN_LR'], verbose=True),
-        'ExponentialLR': torch.optim.lr_scheduler.ExponentialLR(optimizer=optimizer_, gamma=config['FACTOR']),
-        'lr_scheduler': lr_scheduler.MultiStepLR(optimizer=optimizer_, milestones=[5], gamma=5e-5, last_epoch=-1)
+
+        'ExponentialLR': lr_scheduler.ExponentialLR(optimizer=optimizer_, gamma=config['GAMMA'], verbose=True),
+
+        'lr_scheduler': lr_scheduler.MultiStepLR(optimizer=optimizer_, milestones=[20, 40, 50], gamma=config['GAMMA'],
+                                                 verbose=True)
     }
     scheduler_ = scheduler_opt[config['SCHEDULER']]
 
@@ -169,7 +176,7 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'], shuffle=False,
                             num_workers=config['NUM_WORKER'], pin_memory=True)
 
-    mix_up = Mixup(mixup_alpha=.2, num_classes=67)
+    mix_up = Mixup(mixup_alpha=.3, num_classes=67)
 
     # TRAINING LOOP
     print('START TRAINING ...')
@@ -182,14 +189,16 @@ if __name__ == "__main__":
             model.train()
             images, labels = batch[0], batch[1]
 
-            if config['augmentation'] == 1:  # MIXUP
+            if config['AUGMENTATION'] == 1:  # MIXUP
+                images, labels = images.to(device).float(), labels.to(device).long()
                 if len(images) % 2 != 0:
                     images = images[:len(images) - 1, :, :, :]
                     labels = labels[:len(labels) - 1]
 
                 images, labels = mix_up(images, labels)
 
-            if config['augmentation'] == 2:  # CUTMIX
+            if config['AUGMENTATION'] == 2:  # CUTMIX
+                images, labels = batch[0], batch[1]
                 inputs, labels = cutmix(images, labels, alpha=1.0)
 
             images, labels = images.to(device).float(), labels.to(device).long()
@@ -197,10 +206,13 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             outputs = model(images)
 
-            if config['augmentation'] == 1:  # if mixup is used
+            if config['AUGMENTATION'] == 1:  # if mixup is used
                 loss = criterion(outputs, labels.argmax(1))
             else:
                 loss = criterion(outputs, labels)
+
+            if config['REGULARIZATION'] == 'L2':  # L2 regularization
+                loss += 0.001 * torch.norm(model.fc.weight, 2)
 
             loss.backward()
             optimizer.step()
@@ -208,7 +220,7 @@ if __name__ == "__main__":
             epoch_iterator_train.set_postfix(
                 batch_loss=(loss.item()), loss=(train_loss / (step + 1))
             )
-            if config['augmentation'] == 1:
+            if config['AUGMENTATION'] == 1:
                 # TODO: this should be fixed
                 train_acc += (outputs == labels).sum().item()
             else:
@@ -266,7 +278,11 @@ if __name__ == "__main__":
                 f'VALIDATION ACCURACY DID NOT IMPROVE. EPOCHS SINCE LAST LAST IMPROVEMENT: {epoch_since_improvement}.')
 
         # Update learning rate scheduler
-        scheduler.step(valid_balanced_acc)
+        if config['SCHEDULER'] in ['ExponentialLR', 'lr_scheduler']:
+            print(config['SCHEDULER'])
+            scheduler.step()
+        else:
+            scheduler.step(valid_balanced_acc)
 
         # LOG TENSORBOARD
         writer.add_scalar('/Loss_train', train_loss, epoch + pre_epoch)
