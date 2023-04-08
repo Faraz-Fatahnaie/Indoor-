@@ -73,7 +73,7 @@ class ResNet18(nn.Module):
 
 
 class ResNet50(nn.Module):
-    def __init__(self, num_classes=67):
+    def __init__(self, num_classes=67, dropout=None):
         super(ResNet50, self).__init__()
 
         self.inplanes = 64
@@ -90,6 +90,9 @@ class ResNet50(nn.Module):
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512 * 4, num_classes)
+        self.dropout = dropout
+        if dropout is not None:
+            self.dropout_layer = nn.Dropout(p=dropout)
 
     def _make_layer(self, planes, blocks, stride=1):
         downsample = None
@@ -120,6 +123,8 @@ class ResNet50(nn.Module):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
+        if self.dropout is not None:
+            x = self.dropout_layer(x)
         x = self.fc(x)
 
         return x
