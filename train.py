@@ -130,6 +130,7 @@ def setup(args: Namespace):
         best_val_criteria_ = net_checkpoint['best_val_criteria']
 
     # SCHEDULER CONFIGURATION
+    # weight decay help: if overfitting then use higher value. if the model remains underfit then use lower values.
     scheduler_opt = {
         'ReduceLROnPlateau': lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer_, mode='max', factor=config['FACTOR'],
@@ -212,6 +213,7 @@ if __name__ == "__main__":
             else:
                 loss = criterion(outputs, labels)
 
+            # higher multiply factor apply more regularization on model
             if config['REGULARIZATION'] == 'L1':  # L2 regularization
                 loss += 0.01 * torch.norm(model.fc.weight, 1)
             elif config['REGULARIZATION'] == 'L2':
