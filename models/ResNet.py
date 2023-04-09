@@ -51,9 +51,8 @@ class ResNet18(nn.Module):
             self.dropout_layer = nn.Dropout(p=dropout)
 
         if weight_init:
-            self.apply(self.initialize_weights_lecun)
+            self.apply(self.initialize_weights_xavier)
 
-    @staticmethod
     def initialize_weights_xavier(self, m):
         if isinstance(m, nn.Conv2d):
             fan_in = m.weight.data.size(1) * m.kernel_size[0] * m.kernel_size[1]
@@ -64,7 +63,6 @@ class ResNet18(nn.Module):
             limit = math.sqrt(1.0 / fan_in)
             init.uniform_(m.weight.data, -limit, limit)
 
-    @staticmethod
     def initialize_weights_lecun(self, m):
         if isinstance(m, nn.Conv2d):
             fan_in = m.weight.data.size(1) * m.kernel_size[0] * m.kernel_size[1]

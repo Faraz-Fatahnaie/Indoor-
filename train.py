@@ -164,7 +164,7 @@ if __name__ == "__main__":
     model, train_dataset, val_dataset, optimizer, scheduler, criterion, device, SAVE_PATH, TRAINED_MODEL_PATH, \
     CHECKPOINT_PATH, pre_epoch, best_val_criteria, config = setup(args=parser.parse_args())
 
-    # Set up logging
+    # Set up logging and tensorboard
     logging.basicConfig(filename=f'{SAVE_PATH}/training.log', level=logging.INFO)
     writer = SummaryWriter(log_dir=f'{SAVE_PATH}')
 
@@ -213,9 +213,8 @@ if __name__ == "__main__":
             else:
                 loss = criterion(outputs, labels)
 
-            # higher multiply factor apply more regularization on model
             if config['REGULARIZATION'] == 'L1':  # L2 regularization
-                loss += 0.01 * torch.norm(model.fc.weight, 1)
+                loss += 0.01 * torch.norm(model.fc.weight, 1)  # higher multiply factor apply more regularization
             elif config['REGULARIZATION'] == 'L2':
                 loss += 0.01 * torch.norm(model.fc.weight, 2)
 
