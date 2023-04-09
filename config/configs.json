@@ -5,7 +5,7 @@
     "n_channel": 3,
     "image_size": 256,
     "augmentation": 0,
-    "n_worker": 4
+    "n_worker": 5
   },
   "model": {
     "name": "resnet-18",
