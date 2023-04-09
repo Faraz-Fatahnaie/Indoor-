@@ -45,13 +45,13 @@ class ResNet18(nn.Module):
         self.layer4 = self._make_layer(ResidualBlock, 512, 2, stride=2)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.fc = nn.Linear(512, num_classes)
-        # self.fc2 = nn.Linear(512, num_classes)
+        # self.fc2 = nn.Linear(128, num_classes)
         self.dropout = dropout
         if dropout is not None:
             self.dropout_layer = nn.Dropout(p=dropout)
 
         if weight_init:
-            self.apply(self.initialize_weights_xavier)
+            self.apply(self.initialize_weights_lecun)
 
     def initialize_weights_xavier(self, m):
         if isinstance(m, nn.Conv2d):
@@ -96,7 +96,7 @@ class ResNet18(nn.Module):
             x = self.dropout_layer(x)
         x = self.fc(x)
         #if self.dropout is not None:
-        #    x = self.dropout_layer(x)
+            #x = self.dropout_layer(x)
         #x = self.fc2(x)
         return x
 
