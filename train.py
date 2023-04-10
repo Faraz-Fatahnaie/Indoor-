@@ -16,7 +16,6 @@ from tqdm import tqdm
 
 from config.setting import setting
 from dataset import MITIndoorDataset
-from models.EfficientNetV2 import efficientnet_v2_s
 from models.InceptionV3 import InceptionV3
 from models.ResNet import ResNet18, ResNet50
 from timm.data import Mixup
@@ -92,7 +91,6 @@ def setup(args: Namespace):
         'resnet-50': ResNet50(dropout=0.5),
         'resnet-18': ResNet18(dropout=0.5),
         'inception_v3': InceptionV3(),
-        'efficientnet_v2_s': efficientnet_v2_s(),
         'ViT': vits.vit_base_patch16_224(pretrained=False, num_classes=67)
     }
 
@@ -207,6 +205,9 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
             outputs = model(images)
+
+            if config['MODEL_NAME'] == 'inception_v3':
+                outputs = outputs.logits
 
             if config['AUGMENTATION'] == 1:  # if mixup is used
                 loss = criterion(outputs, labels.argmax(1))
