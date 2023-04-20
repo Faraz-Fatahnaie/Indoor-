@@ -18,6 +18,7 @@ from config.setting import setting
 from dataset import MITIndoorDataset
 from models.InceptionV3 import InceptionV3
 from models.ResNet import ResNet18, ResNet50
+from models.GhostNet import ghost_net
 from timm.data import Mixup
 from timm.models import vision_transformer as vits
 from utils import cutmix
@@ -91,6 +92,7 @@ def setup(args: Namespace):
         'resnet-50': ResNet50(dropout=0.5),
         'resnet-18': ResNet18(dropout=0.5),
         'inception_v3': InceptionV3(),
+        'ghost': ghost_net(),
         'ViT': vits.vit_base_patch16_224(pretrained=False, num_classes=67)
     }
 
